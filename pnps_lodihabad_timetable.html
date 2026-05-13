@@ -1,0 +1,371 @@
+
+<h2 class="sr-only">Pakistan National Public School Lodihabad — Complete Weekly Timetable</h2>
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); }
+.wrap { padding: 1rem 0; }
+.top-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.top-bar h1 { font-size: 18px; font-weight: 500; color: var(--color-text-primary); }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1.25rem; }
+button.tab { background: transparent; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 6px 14px; font-size: 13px; color: var(--color-text-secondary); cursor: pointer; transition: all 0.15s; }
+button.tab:hover { background: var(--color-background-secondary); }
+button.tab.active { background: var(--color-background-info); color: var(--color-text-info); border-color: transparent; font-weight: 500; }
+.section-toggle { display: flex; gap: 6px; }
+button.sec { background: transparent; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 5px 12px; font-size: 12px; color: var(--color-text-secondary); cursor: pointer; }
+button.sec.active { background: var(--color-background-success); color: var(--color-text-success); border-color: transparent; font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.25rem; }
+.leg-item { font-size: 11px; padding: 3px 8px; border-radius: 20px; background: var(--color-background-secondary); color: var(--color-text-secondary); border: 0.5px solid var(--color-border-tertiary); }
+.tt-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 560px; }
+th { background: var(--color-background-secondary); color: var(--color-text-secondary); font-weight: 500; padding: 8px 6px; text-align: center; border: 0.5px solid var(--color-border-tertiary); font-size: 11px; }
+th.day-h { color: var(--color-text-primary); font-size: 12px; }
+td { padding: 5px 4px; border: 0.5px solid var(--color-border-tertiary); text-align: center; vertical-align: middle; min-width: 70px; }
+td.period-h { background: var(--color-background-secondary); font-size: 11px; color: var(--color-text-secondary); font-weight: 500; white-space: nowrap; padding: 5px 8px; }
+td.break-row { background: var(--color-background-warning); color: var(--color-text-warning); font-size: 11px; font-weight: 500; text-align: center; }
+.cell { border-radius: 4px; padding: 3px 4px; font-size: 11px; line-height: 1.4; }
+.subj { font-weight: 500; color: var(--color-text-primary); }
+.tchr { font-size: 10px; color: var(--color-text-secondary); margin-top: 1px; }
+.pt-cell { background: var(--color-background-success); border-radius: 4px; padding: 3px 4px; }
+.pt-cell .subj { color: var(--color-text-success); }
+.info-note { font-size: 12px; color: var(--color-text-secondary); margin-top: 1rem; padding: 10px 14px; background: var(--color-background-secondary); border-radius: var(--border-radius-md); border-left: 3px solid var(--color-border-info); }
+</style>
+
+<div class="wrap">
+<div class="top-bar">
+  <i class="ti ti-school" style="font-size:22px;color:var(--color-text-secondary)" aria-hidden="true"></i>
+  <h1>Pakistan National Public School, Lodihabad</h1>
+</div>
+
+<div class="controls" id="classControls"></div>
+<div class="section-toggle" id="secToggle" style="margin-bottom:1rem"></div>
+<div class="legend" id="legend"></div>
+<div class="tt-wrap"><table id="ttTable"></table></div>
+<div class="info-note" id="noteBox"></div>
+</div>
+
+<script>
+const DAYS = ['Monday','Tuesday','Wednesday','Thursday'];
+const PERIODS = [
+  {label:'P1',time:'7:50–8:25'},{label:'P2',time:'8:25–9:00'},
+  {label:'P3',time:'9:00–9:35'},{label:'P4',time:'9:35–10:10'},
+  {label:'BREAK',time:'10:10–10:25',isBreak:true},
+  {label:'P5',time:'10:25–11:00'},{label:'P6',time:'11:00–11:35'},
+  {label:'P7',time:'11:35–12:10'},
+  {label:'BREAK',time:'12:10–12:25',isBreak:true},
+  {label:'P8',time:'12:25–1:00'},{label:'P9',time:'1:00–1:35'},
+  {label:'P10',time:'1:35–2:15'}
+];
+
+const TEACHERS = {
+  'Nawaz':'Muhammad Nawaz','Asif':'Mr. Asif Ali Shah','Sajida':'Ms. Sajida Sadiq',
+  'Shareef':'Mr. Shareef Ullah','Saima':'Ms. Saima Bibi','Itfa':'Ms. Itfa Saleem',
+  'Sara':'Ms. Sara Bibi','Nosheen':'Ms. Nosheen Banaras','Nazeer':'Nazeer Ahmed',
+  'Quratul':'Ms. Quratul Ain','Hira':'Ms. Hira Lodhi','Areeba':'Ms. Areeba Arshad',
+  'Asma':'Ms. Asma','Muqadas':'Mr. Muqadas','Rabia':'Ms. Rabia Iqbal',
+  'Khola':'Ms. Khola','Javeria':'Ms. Javeria','Haleema':'Ms. Haleema',
+  'Zobina':'Ms. Zobina','Nafeesa':'Ms. Nafeesa','Tayyba':'Ms. Tayyba','Ambreen':'Ms. Ambreen'
+};
+
+// Timetables: [classKey] -> { A: [[day0 periods],[day1],...], B: [...] }
+// Each day has 10 teaching slots (breaks inserted separately)
+// Slots: P1,P2,P3,P4,P5,P6,P7,P8,P9,P10
+// Format: {s:'Subject', t:'TeacherShortName'} or {s:'PT',t:''} or {s:'—',t:''}
+
+function mk(s,t){return {s,t};}
+const PT = {s:'PT',t:'',pt:true};
+const E = {s:'—',t:''};
+
+const DATA = {
+  '1A':{
+    label:'Class 1',sec:'A',
+    days:[
+      [mk('E','Quratul'),mk('M','Javeria'),mk('U','Zobina'),mk('E','Quratul'),mk('M','Javeria'),mk('U','Zobina'),mk('Isl','Areeba'),mk('GK','Quratul'),PT,mk('E','Quratul')],
+      [mk('M','Javeria'),mk('U','Zobina'),mk('E','Quratul'),mk('M','Javeria'),mk('Isl','Areeba'),mk('E','Quratul'),mk('GK','Quratul'),mk('U','Zobina'),mk('M','Javeria'),mk('E','Quratul')],
+      [mk('U','Zobina'),mk('E','Quratul'),mk('M','Javeria'),mk('Isl','Areeba'),mk('E','Quratul'),mk('M','Javeria'),mk('U','Zobina'),mk('E','Quratul'),mk('GK','Quratul'),mk('M','Javeria')],
+      [mk('Isl','Areeba'),mk('GK','Quratul'),mk('E','Quratul'),mk('U','Zobina'),mk('M','Javeria'),mk('E','Quratul'),PT,mk('M','Javeria'),mk('U','Zobina'),mk('E','Quratul')],
+    ]
+  },
+  '1B':{
+    label:'Class 1',sec:'B',single:true,
+    days:[
+      [mk('E','Quratul'),mk('M','Javeria'),mk('U','Zobina'),mk('E','Quratul'),mk('M','Javeria'),mk('U','Zobina'),mk('Isl','Areeba'),mk('GK','Quratul'),PT,mk('E','Quratul')],
+      [mk('M','Javeria'),mk('U','Zobina'),mk('E','Quratul'),mk('M','Javeria'),mk('Isl','Areeba'),mk('E','Quratul'),mk('GK','Quratul'),mk('U','Zobina'),mk('M','Javeria'),mk('E','Quratul')],
+      [mk('U','Zobina'),mk('E','Quratul'),mk('M','Javeria'),mk('Isl','Areeba'),mk('E','Quratul'),mk('M','Javeria'),mk('U','Zobina'),mk('E','Quratul'),mk('GK','Quratul'),mk('M','Javeria')],
+      [mk('Isl','Areeba'),mk('GK','Quratul'),mk('E','Quratul'),mk('U','Zobina'),mk('M','Javeria'),mk('E','Quratul'),PT,mk('M','Javeria'),mk('U','Zobina'),mk('E','Quratul')],
+    ]
+  },
+  '2A':{
+    label:'Class 2',sec:'A',
+    days:[
+      [mk('E','Zobina'),mk('U','Itfa'),mk('M','Javeria'),mk('E','Zobina'),mk('U','Itfa'),mk('M','Javeria'),mk('Isl','Nazeer'),mk('GK','Zobina'),PT,mk('E','Zobina')],
+      [mk('M','Javeria'),mk('E','Zobina'),mk('U','Itfa'),mk('M','Javeria'),mk('Isl','Nazeer'),mk('E','Zobina'),mk('GK','Zobina'),mk('U','Itfa'),mk('M','Javeria'),mk('E','Zobina')],
+      [mk('U','Itfa'),mk('M','Javeria'),mk('E','Zobina'),mk('Isl','Nazeer'),mk('M','Javeria'),mk('U','Itfa'),mk('E','Zobina'),mk('M','Javeria'),mk('GK','Zobina'),mk('U','Itfa')],
+      [mk('Isl','Nazeer'),mk('GK','Zobina'),mk('U','Itfa'),mk('E','Zobina'),mk('M','Javeria'),mk('U','Itfa'),PT,mk('E','Zobina'),mk('M','Javeria'),mk('U','Itfa')],
+    ]
+  },
+  '2B':{
+    label:'Class 2',sec:'B',
+    days:[
+      [mk('E','Quratul'),mk('U','Nosheen'),mk('M','Javeria'),mk('E','Quratul'),mk('U','Nosheen'),mk('M','Javeria'),mk('Isl','Areeba'),mk('GK','Quratul'),PT,mk('E','Quratul')],
+      [mk('M','Javeria'),mk('E','Quratul'),mk('U','Nosheen'),mk('M','Javeria'),mk('Isl','Areeba'),mk('E','Quratul'),mk('GK','Quratul'),mk('U','Nosheen'),mk('M','Javeria'),mk('E','Quratul')],
+      [mk('U','Nosheen'),mk('M','Javeria'),mk('E','Quratul'),mk('Isl','Areeba'),mk('M','Javeria'),mk('U','Nosheen'),mk('E','Quratul'),mk('M','Javeria'),mk('GK','Quratul'),mk('U','Nosheen')],
+      [mk('Isl','Areeba'),mk('GK','Quratul'),mk('U','Nosheen'),mk('E','Quratul'),mk('M','Javeria'),mk('U','Nosheen'),PT,mk('E','Quratul'),mk('M','Javeria'),mk('U','Nosheen')],
+    ]
+  },
+  '3A':{
+    label:'Class 3',sec:'A',
+    days:[
+      [mk('E','Asma'),mk('U','Saima'),mk('M','Nawaz'),mk('E','Asma'),mk('U','Saima'),mk('M','Nawaz'),mk('Isl','Nazeer'),mk('GK','Asma'),PT,mk('E','Asma')],
+      [mk('M','Nawaz'),mk('E','Asma'),mk('U','Saima'),mk('M','Nawaz'),mk('Isl','Nazeer'),mk('E','Asma'),mk('GK','Asma'),mk('U','Saima'),mk('M','Nawaz'),mk('E','Asma')],
+      [mk('U','Saima'),mk('M','Nawaz'),mk('E','Asma'),mk('Isl','Nazeer'),mk('M','Nawaz'),mk('U','Saima'),mk('E','Asma'),mk('M','Nawaz'),mk('GK','Asma'),mk('U','Saima')],
+      [mk('Isl','Nazeer'),mk('GK','Asma'),mk('U','Saima'),mk('E','Asma'),mk('M','Nawaz'),mk('U','Saima'),PT,mk('E','Asma'),mk('M','Nawaz'),mk('U','Saima')],
+    ]
+  },
+  '3B':{
+    label:'Class 3',sec:'B',
+    days:[
+      [mk('E','Rabia'),mk('U','Itfa'),mk('M','Nawaz'),mk('E','Rabia'),mk('U','Itfa'),mk('M','Nawaz'),mk('Isl','Shareef'),mk('GK','Rabia'),PT,mk('E','Rabia')],
+      [mk('M','Nawaz'),mk('E','Rabia'),mk('U','Itfa'),mk('M','Nawaz'),mk('Isl','Shareef'),mk('E','Rabia'),mk('GK','Rabia'),mk('U','Itfa'),mk('M','Nawaz'),mk('E','Rabia')],
+      [mk('U','Itfa'),mk('M','Nawaz'),mk('E','Rabia'),mk('Isl','Shareef'),mk('M','Nawaz'),mk('U','Itfa'),mk('E','Rabia'),mk('M','Nawaz'),mk('GK','Rabia'),mk('U','Itfa')],
+      [mk('Isl','Shareef'),mk('GK','Rabia'),mk('U','Itfa'),mk('E','Rabia'),mk('M','Nawaz'),mk('U','Itfa'),PT,mk('E','Rabia'),mk('M','Nawaz'),mk('U','Itfa')],
+    ]
+  },
+  '4A':{
+    label:'Class 4',sec:'A',
+    days:[
+      [mk('E','Asma'),mk('U','Sajida'),mk('M','Javeria'),mk('Sci','Hira'),mk('E','Asma'),mk('SST','Asif'),mk('U','Sajida'),mk('M','Javeria'),PT,mk('Isl','Nazeer')],
+      [mk('M','Javeria'),mk('E','Asma'),mk('Sci','Hira'),mk('U','Sajida'),mk('SST','Asif'),mk('M','Javeria'),mk('Isl','Nazeer'),mk('E','Asma'),mk('Sci','Hira'),mk('U','Sajida')],
+      [mk('U','Sajida'),mk('M','Javeria'),mk('E','Asma'),mk('Isl','Nazeer'),mk('Sci','Hira'),mk('U','Sajida'),mk('SST','Asif'),mk('E','Asma'),mk('M','Javeria'),mk('Sci','Hira')],
+      [mk('Sci','Hira'),mk('Isl','Nazeer'),mk('U','Sajida'),mk('E','Asma'),PT,mk('M','Javeria'),mk('E','Asma'),mk('SST','Asif'),mk('U','Sajida'),mk('M','Javeria')],
+    ]
+  },
+  '4B':{
+    label:'Class 4',sec:'B',
+    days:[
+      [mk('E','Rabia'),mk('U','Nosheen'),mk('M','Nawaz'),mk('Sci','Sara'),mk('E','Rabia'),mk('SST','Sara'),mk('U','Nosheen'),mk('M','Nawaz'),PT,mk('Isl','Shareef')],
+      [mk('M','Nawaz'),mk('E','Rabia'),mk('Sci','Sara'),mk('U','Nosheen'),mk('SST','Sara'),mk('M','Nawaz'),mk('Isl','Shareef'),mk('E','Rabia'),mk('Sci','Sara'),mk('U','Nosheen')],
+      [mk('U','Nosheen'),mk('M','Nawaz'),mk('E','Rabia'),mk('Isl','Shareef'),mk('Sci','Sara'),mk('U','Nosheen'),mk('SST','Sara'),mk('E','Rabia'),mk('M','Nawaz'),mk('Sci','Sara')],
+      [mk('Sci','Sara'),mk('Isl','Shareef'),mk('U','Nosheen'),mk('E','Rabia'),PT,mk('M','Nawaz'),mk('E','Rabia'),mk('SST','Sara'),mk('U','Nosheen'),mk('M','Nawaz')],
+    ]
+  },
+  '5A':{
+    label:'Class 5',sec:'A',single:true,
+    days:[
+      [mk('E','Asma'),mk('U','Sajida'),mk('M','Javeria'),mk('Sci','Hira'),mk('E','Asma'),mk('SST','Asif'),mk('U','Sajida'),mk('M','Javeria'),PT,mk('Isl','Nazeer')],
+      [mk('M','Javeria'),mk('E','Asma'),mk('Sci','Hira'),mk('U','Sajida'),mk('SST','Asif'),mk('M','Javeria'),mk('Isl','Nazeer'),mk('E','Asma'),mk('Sci','Hira'),mk('U','Sajida')],
+      [mk('U','Sajida'),mk('M','Javeria'),mk('E','Asma'),mk('Isl','Nazeer'),mk('Sci','Hira'),mk('U','Sajida'),mk('SST','Asif'),mk('E','Asma'),mk('M','Javeria'),mk('Sci','Hira')],
+      [mk('Sci','Hira'),mk('Isl','Nazeer'),mk('U','Sajida'),mk('E','Asma'),PT,mk('M','Javeria'),mk('E','Asma'),mk('SST','Asif'),mk('U','Sajida'),mk('M','Javeria')],
+    ]
+  },
+  '6A':{
+    label:'Class 6',sec:'A',
+    days:[
+      [mk('E','Rabia'),mk('U','Saima'),mk('M','Nawaz'),mk('Sci','Sara'),mk('E','Rabia'),mk('H','Asma'),mk('Comp','Ambreen'),mk('U','Saima'),PT,mk('Isl','Shareef')],
+      [mk('M','Nawaz'),mk('Sci','Sara'),mk('E','Rabia'),mk('U','Saima'),mk('H','Asma'),mk('M','Nawaz'),mk('Isl','Shareef'),mk('Comp','Ambreen'),mk('Sci','Sara'),mk('E','Rabia')],
+      [mk('U','Saima'),mk('M','Nawaz'),mk('Sci','Sara'),mk('Isl','Shareef'),mk('E','Rabia'),mk('U','Saima'),mk('M','Nawaz'),mk('H','Asma'),mk('Comp','Ambreen'),mk('Sci','Sara')],
+      [mk('Sci','Sara'),mk('H','Asma'),mk('U','Saima'),mk('M','Nawaz'),mk('Comp','Ambreen'),mk('E','Rabia'),PT,mk('Isl','Shareef'),mk('U','Saima'),mk('M','Nawaz')],
+    ]
+  },
+  '6B':{
+    label:'Class 6',sec:'B',
+    days:[
+      [mk('E','Asma'),mk('U','Sajida'),mk('M','Rabia'),mk('Sci','Sara'),mk('E','Asma'),mk('H','Asif'),mk('Comp','Ambreen'),mk('U','Sajida'),PT,mk('Isl','Nazeer')],
+      [mk('M','Rabia'),mk('Sci','Sara'),mk('E','Asma'),mk('U','Sajida'),mk('H','Asif'),mk('M','Rabia'),mk('Isl','Nazeer'),mk('Comp','Ambreen'),mk('Sci','Sara'),mk('E','Asma')],
+      [mk('U','Sajida'),mk('M','Rabia'),mk('Sci','Sara'),mk('Isl','Nazeer'),mk('E','Asma'),mk('U','Sajida'),mk('M','Rabia'),mk('H','Asif'),mk('Comp','Ambreen'),mk('Sci','Sara')],
+      [mk('Sci','Sara'),mk('H','Asif'),mk('U','Sajida'),mk('M','Rabia'),mk('Comp','Ambreen'),mk('E','Asma'),PT,mk('Isl','Nazeer'),mk('U','Sajida'),mk('M','Rabia')],
+    ]
+  },
+  '7A':{
+    label:'Class 7',sec:'A',
+    days:[
+      [mk('E','Rabia'),mk('U','Saima'),mk('M','Nawaz'),mk('Sci','Sara'),mk('E','Rabia'),mk('H','Asma'),mk('Comp','Ambreen'),mk('U','Saima'),PT,mk('Isl','Shareef')],
+      [mk('M','Nawaz'),mk('Sci','Sara'),mk('E','Rabia'),mk('U','Saima'),mk('H','Asma'),mk('M','Nawaz'),mk('Isl','Shareef'),mk('Comp','Ambreen'),mk('Sci','Sara'),mk('E','Rabia')],
+      [mk('U','Saima'),mk('M','Nawaz'),mk('Sci','Sara'),mk('Isl','Shareef'),mk('E','Rabia'),mk('U','Saima'),mk('M','Nawaz'),mk('H','Asma'),mk('Comp','Ambreen'),mk('Sci','Sara')],
+      [mk('Sci','Sara'),mk('H','Asma'),mk('U','Saima'),mk('M','Nawaz'),mk('Comp','Ambreen'),mk('E','Rabia'),PT,mk('Isl','Shareef'),mk('U','Saima'),mk('M','Nawaz')],
+    ]
+  },
+  '7B':{
+    label:'Class 7',sec:'B',
+    days:[
+      [mk('E','Asma'),mk('U','Nosheen'),mk('M','Rabia'),mk('Sci','Sara'),mk('E','Asma'),mk('H','Asif'),mk('Comp','Ambreen'),mk('U','Nosheen'),PT,mk('Isl','Nazeer')],
+      [mk('M','Rabia'),mk('Sci','Sara'),mk('E','Asma'),mk('U','Nosheen'),mk('H','Asif'),mk('M','Rabia'),mk('Isl','Nazeer'),mk('Comp','Ambreen'),mk('Sci','Sara'),mk('E','Asma')],
+      [mk('U','Nosheen'),mk('M','Rabia'),mk('Sci','Sara'),mk('Isl','Nazeer'),mk('E','Asma'),mk('U','Nosheen'),mk('M','Rabia'),mk('H','Asif'),mk('Comp','Ambreen'),mk('Sci','Sara')],
+      [mk('Sci','Sara'),mk('H','Asif'),mk('U','Nosheen'),mk('M','Rabia'),mk('Comp','Ambreen'),mk('E','Asma'),PT,mk('Isl','Nazeer'),mk('U','Nosheen'),mk('M','Rabia')],
+    ]
+  },
+  '8A':{
+    label:'Class 8',sec:'A',
+    days:[
+      [mk('E','Rabia'),mk('U','Saima'),mk('M','Nawaz'),mk('Sci','Sara'),mk('E','Rabia'),mk('H','Asma'),mk('Comp','Ambreen'),mk('U','Saima'),PT,mk('Isl','Shareef')],
+      [mk('M','Nawaz'),mk('Sci','Sara'),mk('E','Rabia'),mk('U','Saima'),mk('H','Asma'),mk('M','Nawaz'),mk('Isl','Shareef'),mk('Comp','Ambreen'),mk('Sci','Sara'),mk('E','Rabia')],
+      [mk('U','Saima'),mk('M','Nawaz'),mk('Sci','Sara'),mk('Isl','Shareef'),mk('E','Rabia'),mk('U','Saima'),mk('M','Nawaz'),mk('H','Asma'),mk('Comp','Ambreen'),mk('Sci','Sara')],
+      [mk('Sci','Sara'),mk('H','Asma'),mk('U','Saima'),mk('M','Nawaz'),mk('Comp','Ambreen'),mk('E','Rabia'),PT,mk('Isl','Shareef'),mk('U','Saima'),mk('M','Nawaz')],
+    ]
+  },
+  '8B':{
+    label:'Class 8',sec:'B',
+    days:[
+      [mk('E','Asma'),mk('U','Sajida'),mk('M','Rabia'),mk('Sci','Rabia'),mk('E','Asma'),mk('H','Asif'),mk('Comp','Ambreen'),mk('U','Sajida'),PT,mk('Isl','Nazeer')],
+      [mk('M','Rabia'),mk('Sci','Rabia'),mk('E','Asma'),mk('U','Sajida'),mk('H','Asif'),mk('M','Rabia'),mk('Isl','Nazeer'),mk('Comp','Ambreen'),mk('Sci','Rabia'),mk('E','Asma')],
+      [mk('U','Sajida'),mk('M','Rabia'),mk('Sci','Rabia'),mk('Isl','Nazeer'),mk('E','Asma'),mk('U','Sajida'),mk('M','Rabia'),mk('H','Asif'),mk('Comp','Ambreen'),mk('Sci','Rabia')],
+      [mk('Sci','Rabia'),mk('H','Asif'),mk('U','Sajida'),mk('M','Rabia'),mk('Comp','Ambreen'),mk('E','Asma'),PT,mk('Isl','Nazeer'),mk('U','Sajida'),mk('M','Rabia')],
+    ]
+  },
+  '9A':{
+    label:'Class 9',sec:'A',
+    days:[
+      [mk('E','Rabia'),mk('U','Saima'),mk('M','Nawaz'),mk('P','Tayyba'),mk('Ch','Haleema'),mk('Bio','Khola'),mk('Isl','Shareef'),mk('MQ','Shareef'),mk('PkSt','Asif'),mk('E','Rabia')],
+      [mk('M','Nawaz'),mk('P','Tayyba'),mk('E','Rabia'),mk('U','Saima'),mk('Bio','Khola'),mk('M','Nawaz'),mk('Isl','Shareef'),mk('Ch','Haleema'),mk('MQ','Shareef'),mk('PkSt','Asif')],
+      [mk('U','Saima'),mk('M','Nawaz'),mk('Ch','Haleema'),mk('Isl','Shareef'),mk('E','Rabia'),mk('U','Saima'),mk('P','Tayyba'),mk('Bio','Khola'),mk('MQ','Shareef'),mk('PkSt','Asif')],
+      [mk('Bio','Khola'),mk('Ch','Haleema'),mk('U','Saima'),mk('M','Nawaz'),mk('P','Tayyba'),mk('E','Rabia'),mk('MQ','Shareef'),mk('Isl','Shareef'),mk('PkSt','Asif'),mk('M','Nawaz')],
+    ]
+  },
+  '9B':{
+    label:'Class 9',sec:'B',
+    days:[
+      [mk('E','Asma'),mk('U','Sajida'),mk('M','Tayyba'),mk('P','Tayyba'),mk('Ch','Haleema'),mk('Bio','Nafeesa'),mk('Isl','Nazeer'),mk('MQ','Shareef'),mk('PkSt','Asif'),mk('E','Asma')],
+      [mk('M','Tayyba'),mk('P','Tayyba'),mk('E','Asma'),mk('U','Sajida'),mk('Bio','Nafeesa'),mk('M','Tayyba'),mk('Isl','Nazeer'),mk('Ch','Haleema'),mk('MQ','Shareef'),mk('PkSt','Asif')],
+      [mk('U','Sajida'),mk('M','Tayyba'),mk('Ch','Haleema'),mk('Isl','Nazeer'),mk('E','Asma'),mk('U','Sajida'),mk('P','Tayyba'),mk('Bio','Nafeesa'),mk('MQ','Shareef'),mk('PkSt','Asif')],
+      [mk('Bio','Nafeesa'),mk('Ch','Haleema'),mk('U','Sajida'),mk('M','Tayyba'),mk('P','Tayyba'),mk('E','Asma'),mk('MQ','Shareef'),mk('Isl','Nazeer'),mk('PkSt','Asif'),mk('M','Tayyba')],
+    ]
+  },
+  '10A':{
+    label:'Class 10',sec:'A',
+    days:[
+      [mk('E','Rabia'),mk('U','Saima'),mk('M','Nawaz'),mk('P','Tayyba'),mk('Ch','Haleema'),mk('Bio','Khola'),mk('Isl','Shareef'),mk('MQ','Shareef'),mk('PkSt','Asif'),mk('E','Rabia')],
+      [mk('M','Nawaz'),mk('P','Tayyba'),mk('E','Rabia'),mk('U','Saima'),mk('Bio','Khola'),mk('M','Nawaz'),mk('Isl','Shareef'),mk('Ch','Haleema'),mk('MQ','Shareef'),mk('PkSt','Asif')],
+      [mk('U','Saima'),mk('M','Nawaz'),mk('Ch','Haleema'),mk('Isl','Shareef'),mk('E','Rabia'),mk('U','Saima'),mk('P','Tayyba'),mk('Bio','Khola'),mk('MQ','Shareef'),mk('PkSt','Asif')],
+      [mk('Bio','Khola'),mk('Ch','Haleema'),mk('U','Saima'),mk('M','Nawaz'),mk('P','Tayyba'),mk('E','Rabia'),mk('MQ','Shareef'),mk('Isl','Shareef'),mk('PkSt','Asif'),mk('M','Nawaz')],
+    ]
+  },
+  '10B':{
+    label:'Class 10',sec:'B',
+    days:[
+      [mk('E','Asma'),mk('U','Nosheen'),mk('M','Tayyba'),mk('P','Tayyba'),mk('Ch','Haleema'),mk('Bio','Nafeesa'),mk('Isl','Nazeer'),mk('MQ','Shareef'),mk('PkSt','Asif'),mk('E','Asma')],
+      [mk('M','Tayyba'),mk('P','Tayyba'),mk('E','Asma'),mk('U','Nosheen'),mk('Bio','Nafeesa'),mk('M','Tayyba'),mk('Isl','Nazeer'),mk('Ch','Haleema'),mk('MQ','Shareef'),mk('PkSt','Asif')],
+      [mk('U','Nosheen'),mk('M','Tayyba'),mk('Ch','Haleema'),mk('Isl','Nazeer'),mk('E','Asma'),mk('U','Nosheen'),mk('P','Tayyba'),mk('Bio','Nafeesa'),mk('MQ','Shareef'),mk('PkSt','Asif')],
+      [mk('Bio','Nafeesa'),mk('Ch','Haleema'),mk('U','Nosheen'),mk('M','Tayyba'),mk('P','Tayyba'),mk('E','Asma'),mk('MQ','Shareef'),mk('Isl','Nazeer'),mk('PkSt','Asif'),mk('M','Tayyba')],
+    ]
+  },
+};
+
+const CLASS_KEYS = ['1A','1B','2A','2B','3A','3B','4A','4B','5A','6A','6B','7A','7B','8A','8B','9A','9B','10A','10B'];
+const CLASS_GROUPS = [
+  {label:'Class 1',keys:['1A','1B']},
+  {label:'Class 2',keys:['2A','2B']},
+  {label:'Class 3',keys:['3A','3B']},
+  {label:'Class 4',keys:['4A','4B']},
+  {label:'Class 5',keys:['5A']},
+  {label:'Class 6',keys:['6A','6B']},
+  {label:'Class 7',keys:['7A','7B']},
+  {label:'Class 8',keys:['8A','8B']},
+  {label:'Class 9',keys:['9A','9B']},
+  {label:'Class 10',keys:['10A','10B']},
+];
+
+const SUBJ_COLORS = {
+  'E':'#E6F1FB','U':'#EAF3DE','M':'#FAEEDA','Isl':'#FBEAF0','GK':'#E1F5EE',
+  'Sci':'#EAF3DE','SST':'#FAECE7','H':'#FAECE7','Comp':'#EEEDFE',
+  'P':'#FCEBEB','Ch':'#FAC775','Bio':'#C0DD97','MQ':'#F4C0D1','PkSt':'#B5D4F4',
+  'PT':'#EAF3DE'
+};
+const SUBJ_TEXT = {
+  'E':'#0C447C','U':'#27500A','M':'#633806','Isl':'#72243E','GK':'#085041',
+  'Sci':'#27500A','SST':'#712B13','H':'#712B13','Comp':'#3C3489',
+  'P':'#791F1F','Ch':'#412402','Bio':'#173404','MQ':'#4B1528','PkSt':'#042C53',
+  'PT':'#0F6E56'
+};
+const SUBJ_FULL = {
+  'E':'English','U':'Urdu','M':'Maths','Isl':'Islamiyat','GK':'G.K.',
+  'Sci':'Science','SST':'SST','H':'History','Comp':'Computer',
+  'P':'Physics','Ch':'Chemistry','Bio':'Biology','MQ':'Mutala Quran','PkSt':'Pak Studies','PT':'PT'
+};
+
+let curClass = '1A';
+let curSec = 'A';
+
+function renderControls(){
+  const cc = document.getElementById('classControls');
+  cc.innerHTML = CLASS_GROUPS.map(g=>`<button class="tab${DATA[g.keys[0]].label===DATA[curClass].label?' active':''}" onclick="selectClass('${g.keys[0]}')">${g.label}</button>`).join('');
+  const st = document.getElementById('secToggle');
+  const grp = CLASS_GROUPS.find(g=>DATA[g.keys[0]].label===DATA[curClass].label);
+  if(grp && grp.keys.length>1){
+    st.innerHTML = ['A','B'].map(s=>`<button class="sec${curSec===s?' active':''}" onclick="selectSec('${s}')">${s}</button>`).join('');
+    st.style.display='flex';
+  } else {
+    st.style.display='none';
+  }
+}
+
+function selectClass(k){
+  const grp = CLASS_GROUPS.find(g=>DATA[g.keys[0]].label===DATA[k].label);
+  curClass = grp.keys[0];
+  curSec='A';
+  renderControls();
+  renderLegend();
+  renderTable();
+  renderNote();
+}
+
+function selectSec(s){
+  curSec=s;
+  const grp = CLASS_GROUPS.find(g=>DATA[g.keys[0]].label===DATA[curClass].label);
+  curClass = grp.keys.find(k=>DATA[k].sec===s)||grp.keys[0];
+  renderControls();
+  renderTable();
+}
+
+function getSubjects(){
+  const d = DATA[curClass];
+  const set = new Set();
+  d.days.forEach(day=>day.forEach(c=>{ if(c.s&&c.s!=='—')set.add(c.s); }));
+  return [...set];
+}
+
+function renderLegend(){
+  const subs = getSubjects();
+  document.getElementById('legend').innerHTML = subs.map(s=>`<span class="leg-item" style="background:${SUBJ_COLORS[s]||'var(--color-background-secondary)'};color:${SUBJ_TEXT[s]||'var(--color-text-secondary)'};border-color:transparent">${s} = ${SUBJ_FULL[s]||s}</span>`).join('');
+}
+
+function renderTable(){
+  const d = DATA[curClass];
+  let html = '<thead><tr><th style="min-width:80px">Period</th>';
+  DAYS.forEach(day=>html+=`<th class="day-h">${day}</th>`);
+  html+='</tr></thead><tbody>';
+  let pIdx=0;
+  PERIODS.forEach((p,i)=>{
+    if(p.isBreak){
+      html+=`<tr><td class="period-h">${p.label}<br><span style="font-size:10px;color:var(--color-text-secondary)">${p.time}</span></td><td colspan="4" class="break-row"><i class="ti ti-coffee" aria-hidden="true"></i> Break — ${p.time}</td></tr>`;
+    } else {
+      html+=`<tr><td class="period-h">${p.label}<br><span style="font-size:10px;color:var(--color-text-secondary)">${p.time}</span></td>`;
+      DAYS.forEach((_,di)=>{
+        const cell = d.days[di][pIdx];
+        if(!cell){html+='<td>—</td>';return;}
+        const bg = cell.pt ? SUBJ_COLORS['PT'] : (SUBJ_COLORS[cell.s]||'transparent');
+        const tc = cell.pt ? SUBJ_TEXT['PT'] : (SUBJ_TEXT[cell.s]||'var(--color-text-primary)');
+        const tname = cell.t ? TEACHERS[cell.t] : '';
+        const short = tname ? tname.split(' ').slice(-1)[0] : '';
+        html+=`<td><div class="cell${cell.pt?' pt-cell':''}" style="background:${bg}"><div class="subj" style="color:${tc}">${cell.pt?'PT':cell.s}</div>${short?`<div class="tchr">${short}</div>`:''}</div></td>`;
+      });
+      html+='</tr>';
+      pIdx++;
+    }
+  });
+  html+='</tbody>';
+  document.getElementById('ttTable').innerHTML=html;
+}
+
+function renderNote(){
+  const d = DATA[curClass];
+  const label = d.label + (d.single?'':' Section '+curSec);
+  const isPrimary = ['Class 1','Class 2','Class 3'].includes(d.label);
+  const is910 = ['Class 9','Class 10'].includes(d.label);
+  document.getElementById('noteBox').innerHTML = `<strong>${label}</strong> — 4 days/week (Mon–Thu) · 10 periods/day · Breaks after P4 & P7 · Each period 35 min · ${is910?'No PT period (9th & 10th)':'PT period included once per week, never last period'}`;
+}
+
+renderControls();
+renderLegend();
+renderTable();
+renderNote();
+</script>
